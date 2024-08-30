@@ -32,7 +32,7 @@ fn transform_job(job: Job) -> JobDto {
 }
 
 #[derive(Deserialize)]
-pub struct NewJobData {
+pub struct NewJobInput {
     max_retries: Option<i32>,
     name: String,
     payload: String,
@@ -44,11 +44,11 @@ pub struct CreateJobResponse {
 }
 
 pub async fn create_job_handler(
-    Json(new_job_data): Json<NewJobData>,
+    Json(new_job_input): Json<NewJobInput>,
 ) -> Result<Json<CreateJobResponse>, (StatusCode, String)> {
-    let name = new_job_data.name.trim();
-    let payload = new_job_data.payload.trim();
-    let max_retries = new_job_data.max_retries.unwrap_or(3);
+    let name = new_job_input.name.trim();
+    let payload = new_job_input.payload.trim();
+    let max_retries = new_job_input.max_retries.unwrap_or(3);
 
     if name.is_empty() {
         return Err((
