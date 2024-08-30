@@ -240,6 +240,161 @@ pub async fn claim_job_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct CreateSuccessfulRunInput {
+    id: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateSuccessfulRunResponse {
+    job: JobDto,
+}
+
+pub async fn create_successful_run_handler(
+    Json(create_successful_run_input): Json<CreateSuccessfulRunInput>,
+) -> Result<Json<CreateSuccessfulRunResponse>, (StatusCode, String)> {
+    let id = create_successful_run_input.id.trim();
+
+    let connection = &mut establish_connection();
+
+    let existing_job = find_job(connection, id);
+
+    if existing_job.is_err() {
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Job does not exist.".into(),
+        ));
+    }
+
+    let existing_job = existing_job.unwrap();
+
+    if existing_job.status != "running" {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            "Job is not running.".into(),
+        ));
+    }
+
+    let job = connection.transaction::<Job, diesel::result::Error, _>(|connection| {
+        let update_result = diesel::update(self::schema::jobs::dsl::jobs)
+            .filter(schema::jobs::id.eq(id))
+            .set((
+                schema::jobs::status.eq("success"),
+                schema::jobs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(connection);
+
+        if update_result.is_err() {
+            return Err(update_result.unwrap_err());
+        }
+
+        let job = find_job(connection, id);
+
+        if job.is_err() {
+            return Err(job.unwrap_err());
+        }
+
+        return Ok(job.unwrap());
+    });
+
+    match job {
+        Err(e) => {
+            log::error!("Failed to update job. {}", e);
+
+            return Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update job.".into(),
+            ));
+        }
+        Ok(job) => {
+            log::info!("Updated job with id {:?} to success.", job.id);
+
+            return Ok(Json(CreateSuccessfulRunResponse {
+                job: transform_job(job),
+            }));
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CreateFailedRunInput {
+    id: String,
+    error: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateFailedRunResponse {
+    job: JobDto,
+}
+
+pub async fn create_failed_run_handler(
+    Json(create_failed_run_input): Json<CreateFailedRunInput>,
+) -> Result<Json<CreateFailedRunResponse>, (StatusCode, String)> {
+    let id = create_failed_run_input.id.trim();
+    let error = create_failed_run_input.error.trim();
+
+    let connection = &mut establish_connection();
+
+    let existing_job = find_job(connection, id);
+
+    if existing_job.is_err() {
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Job does not exist.".into(),
+        ));
+    }
+
+    let existing_job = existing_job.unwrap();
+
+    if existing_job.status != "running" {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            "Job is not running.".into(),
+        ));
+    }
+
+    let job = connection.transaction::<Job, diesel::result::Error, _>(|connection| {
+        let update_result = diesel::update(self::schema::jobs::dsl::jobs)
+            .filter(schema::jobs::id.eq(id))
+            .set((
+                schema::jobs::status.eq("failure"),
+                schema::jobs::last_error.eq(error),
+                schema::jobs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(connection);
+
+        if update_result.is_err() {
+            return Err(update_result.unwrap_err());
+        }
+
+        let job = find_job(connection, id);
+
+        if job.is_err() {
+            return Err(job.unwrap_err());
+        }
+
+        return Ok(job.unwrap());
+    });
+
+    match job {
+        Err(e) => {
+            log::error!("Failed to update job. {}", e);
+
+            return Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update job.".into(),
+            ));
+        }
+        Ok(job) => {
+            log::info!("Updated job with id {:?} to success.", job.id);
+
+            return Ok(Json(CreateFailedRunResponse {
+                job: transform_job(job),
+            }));
+        }
+    }
+}
+
 fn find_first_available_job(
     connection: &mut SqliteConnection,
 ) -> Result<Job, diesel::result::Error> {
