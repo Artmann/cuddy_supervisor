@@ -8,7 +8,7 @@ pub mod models;
 pub mod schema;
 
 use axum::{routing::post, Router};
-use jobs::{create_job_handler, list_jobs_handler};
+use jobs::{claim_job_handler, create_job_handler, list_jobs_handler};
 use logger::init_logger;
 use std::net::SocketAddr;
 
@@ -16,7 +16,9 @@ use std::net::SocketAddr;
 async fn main() {
     init_logger().unwrap();
 
-    let app = Router::new().route("/jobs", post(create_job_handler).get(list_jobs_handler));
+    let app = Router::new()
+        .route("/jobs", post(create_job_handler).get(list_jobs_handler))
+        .route("/claim", post(claim_job_handler));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 7878));
 

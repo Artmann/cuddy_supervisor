@@ -4,7 +4,7 @@ use crate::schema::jobs;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = jobs)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 
@@ -18,6 +18,7 @@ pub struct Job {
     pub retry_count: i32,
     pub status: String,
     pub updated_at: Option<NaiveDateTime>,
+    pub worker_id: Option<String>,
 }
 
 #[derive(Insertable, Deserialize, Serialize)]

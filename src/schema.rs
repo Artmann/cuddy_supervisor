@@ -11,5 +11,6 @@ diesel::table! {
         retry_count -> Integer,
         status -> Text,
         updated_at -> Nullable<Timestamp>,
+        worker_id -> Nullable<Text>,
     }
 }

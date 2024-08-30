@@ -17,6 +17,7 @@ struct JobDto {
     payload: String,
     retry_count: i32,
     status: String,
+    worker_id: Option<String>,
 }
 
 fn transform_job(job: Job) -> JobDto {
@@ -28,6 +29,7 @@ fn transform_job(job: Job) -> JobDto {
         payload: job.payload,
         retry_count: job.retry_count,
         status: job.status,
+        worker_id: job.worker_id,
     }
 }
 
@@ -148,4 +150,118 @@ pub async fn list_jobs_handler() -> Result<Json<ListJobsResponse>, (StatusCode, 
             ));
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct ClaimJobInput {
+    worker_id: String,
+}
+
+#[derive(Serialize)]
+pub struct ClaimJobResponse {
+    job: Option<JobDto>,
+}
+
+pub async fn claim_job_handler(
+    Json(claim_job_input): Json<ClaimJobInput>,
+) -> Result<Json<ClaimJobResponse>, (StatusCode, String)> {
+    let worker_id = claim_job_input.worker_id.trim();
+
+    if worker_id.is_empty() {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            "worker_id cannot be empty.".into(),
+        ));
+    }
+
+    let connection = &mut establish_connection();
+
+    let result = connection.transaction::<Option<Job>, diesel::result::Error, _>(|connection| {
+        let first_job = find_first_available_job(connection);
+
+        if first_job.is_err() {
+            return Ok(None);
+        }
+
+        let job = first_job.unwrap();
+
+        let update_result = diesel::update(self::schema::jobs::dsl::jobs)
+            .filter(schema::jobs::id.eq(job.id.clone()))
+            .set((
+                schema::jobs::status.eq("running"),
+                schema::jobs::worker_id.eq(worker_id),
+                schema::jobs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(connection);
+
+        if update_result.is_err() {
+            return Err(update_result.unwrap_err());
+        }
+
+        let updated_job = find_job(connection, &job.id);
+
+        if updated_job.is_err() {
+            return Err(updated_job.unwrap_err());
+        }
+
+        let job = updated_job.unwrap();
+
+        return diesel::result::QueryResult::Ok(Some(job));
+    });
+
+    if result.is_err() {
+        log::error!("Failed to claim job. {}", result.unwrap_err());
+
+        return Err((
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to claim job.".into(),
+        ));
+    }
+
+    let job = result.unwrap();
+
+    match job {
+        Some(job) => {
+            log::info!(
+                "Claiming job with id {:?} for worker {:?}",
+                job.id,
+                worker_id
+            );
+
+            return Ok(Json(ClaimJobResponse {
+                job: Some(transform_job(job)),
+            }));
+        }
+        None => {
+            log::info!("There are no available jobs to claim.");
+
+            return Ok(Json(ClaimJobResponse { job: None }));
+        }
+    }
+}
+
+fn find_first_available_job(
+    connection: &mut SqliteConnection,
+) -> Result<Job, diesel::result::Error> {
+    use self::schema::jobs::dsl::jobs;
+
+    let job = jobs
+        .select(Job::as_select())
+        .filter(schema::jobs::status.eq("pending"))
+        .filter(schema::jobs::worker_id.is_null())
+        .order(schema::jobs::created_at.asc())
+        .first(connection);
+
+    return job;
+}
+
+fn find_job(connection: &mut SqliteConnection, id: &str) -> Result<Job, diesel::result::Error> {
+    use self::schema::jobs::dsl::jobs;
+
+    let job = jobs
+        .select(Job::as_select())
+        .filter(schema::jobs::id.eq(id))
+        .first(connection);
+
+    return job;
 }
