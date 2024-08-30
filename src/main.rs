@@ -8,15 +8,19 @@ pub mod models;
 pub mod schema;
 
 use axum::{routing::post, Router};
+use dotenvy::dotenv;
 use jobs::{
     claim_job_handler, create_failed_run_handler, create_job_handler,
     create_successful_run_handler, list_jobs_handler,
 };
 use logger::init_logger;
+use std::env;
 use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     init_logger().unwrap();
 
     let app = Router::new()
@@ -25,7 +29,10 @@ async fn main() {
         .route("/successful-run", post(create_successful_run_handler))
         .route("/failed-run", post(create_failed_run_handler));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 7878));
+    let port = env::var("PORT").unwrap_or("7878".to_string());
+    let port = port.parse::<u16>().unwrap_or(7878);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     log::info!("🚀 Server running on {}", addr);
 
