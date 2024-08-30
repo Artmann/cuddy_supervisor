@@ -47,6 +47,13 @@ cargo run
 
 This will start the supervisor and it will begin monitoring the job queue, delegating tasks to workers as they become available.
 
+### Building and running your application
+
+When you're ready, start your application by running:
+`docker compose up --build`.
+
+Your application will be available at http://localhost:7878.
+
 ## API
 
 N/A

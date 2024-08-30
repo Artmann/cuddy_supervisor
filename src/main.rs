@@ -32,7 +32,7 @@ async fn main() {
     let port = env::var("PORT").unwrap_or("7878".to_string());
     let port = port.parse::<u16>().unwrap_or(7878);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     log::info!("🚀 Server running on {}", addr);
 
